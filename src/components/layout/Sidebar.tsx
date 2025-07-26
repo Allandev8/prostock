@@ -38,7 +38,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ className }) => {
     <div className={cn("flex h-full w-64 flex-col bg-card border-r", className)}>
       <div className="flex h-16 items-center border-b px-6">
         <h1 className="text-xl font-semibold text-foreground">
-          StockPro
+          ProStock
         </h1>
       </div>
       
