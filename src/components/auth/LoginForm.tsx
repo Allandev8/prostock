@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { Eye, EyeOff, LogIn } from 'lucide-react';
+import { Eye, EyeOff, LogIn, Settings } from 'lucide-react';
 
 export const LoginForm: React.FC = () => {
-  const [credentials, setCredentials] = useState({ email: '', password: '' });
+  const [credentials, setCredentials] = useState({ 
+    email: '', 
+    password: ''
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
@@ -24,20 +27,10 @@ export const LoginForm: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const success = await login(credentials);
+      const success = await login({ email: credentials.email, password: credentials.password });
       
       if (success) {
         navigate(from, { replace: true });
-        toast({
-          title: "Login realizado",
-          description: "Bem-vindo ao sistema!"
-        });
-      } else {
-        toast({
-          title: "Erro no login",
-          description: "Email ou senha incorretos",
-          variant: "destructive"
-        });
       }
     } catch (error) {
       toast({
@@ -47,14 +40,6 @@ export const LoginForm: React.FC = () => {
       });
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const fillDemo = (type: 'admin' | 'pdv') => {
-    if (type === 'admin') {
-      setCredentials({ email: 'admin@sistema.com', password: 'admin123' });
-    } else {
-      setCredentials({ email: 'pdv@sistema.com', password: 'pdv123' });
     }
   };
 
@@ -110,26 +95,13 @@ export const LoginForm: React.FC = () => {
           </form>
 
           <div className="mt-6 pt-4 border-t">
-            <p className="text-sm text-muted-foreground mb-3 text-center">
-              Dados para demonstração:
-            </p>
-            <div className="space-y-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fillDemo('admin')}
-                className="w-full text-xs"
-              >
-                Admin: admin@sistema.com / admin123
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fillDemo('pdv')}
-                className="w-full text-xs"
-              >
-                PDV: pdv@sistema.com / pdv123
-              </Button>
+            <div className="text-center">
+              <Link to="/setup">
+                <Button variant="link" className="text-sm">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Primeira vez? Configurar usuários
+                </Button>
+              </Link>
             </div>
           </div>
         </CardContent>

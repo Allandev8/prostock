@@ -1,11 +1,10 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { UserRole } from '@/types/auth';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  allowedRoles?: UserRole[];
+  allowedRoles?: ('admin' | 'pdv')[];
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
@@ -37,6 +36,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
           <h1 className="text-2xl font-bold text-foreground mb-2">Acesso Negado</h1>
           <p className="text-muted-foreground">
             Você não tem permissão para acessar esta página.
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Sua função: {user.role === 'admin' ? 'Administrador' : 'PDV'}
           </p>
         </div>
       </div>
