@@ -8,7 +8,8 @@ import {
   ShoppingCart, 
   LogOut,
   User,
-  Settings
+  Settings,
+  Plus
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -61,6 +62,14 @@ export const Sidebar: React.FC = () => {
 
       <div className="flex-1 p-4">
         <nav className="space-y-2">
+          <Button
+            variant="primary"
+            className="w-full justify-start mb-4"
+            onClick={() => navigate('/admin/products')}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Produto
+          </Button>
           {filteredMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;

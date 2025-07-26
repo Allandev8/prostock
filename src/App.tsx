@@ -15,6 +15,7 @@ import { SetupMasterUsers } from "@/components/admin/SetupMasterUsers";
 import { DebugRoles } from "@/components/admin/DebugRoles";
 import { PointOfSale } from "@/pages/pdv/PointOfSale";
 import NotFound from "./pages/NotFound";
+import Register from './pages/Register';
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<LoginForm />} />
+              <Route path="/register" element={<Register />} />
               <Route path="/setup" element={<SetupMasterUsers />} />
               <Route path="/debug" element={<DebugRoles />} />
               <Route path="/pdv" element={
@@ -36,7 +38,7 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="/admin" element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute>
                   <AdminLayout />
                 </ProtectedRoute>
               }>
