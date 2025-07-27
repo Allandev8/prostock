@@ -45,7 +45,7 @@ export const Sidebar: React.FC = () => {
       path: '/admin/settings',
       icon: Settings,
       label: 'Configurações',
-      roles: ['admin']
+      roles: ['admin', 'pdv']
     }
   ];
 

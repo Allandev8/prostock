@@ -24,13 +24,19 @@ export const AdminDashboard: React.FC = () => {
   const [movements, setMovements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  console.log('Dashboard: User info:', { user, userId });
+
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      console.log('Dashboard: No userId, returning');
+      return;
+    }
+
+    console.log('Dashboard: Buscando produtos para usuário:', userId);
 
     // Buscar produtos do usuário
     const productsQuery = query(
-      collection(db, `usuarios/${userId}/produtos`),
-      orderBy('createdAt', 'desc')
+      collection(db, `usuarios/${userId}/produtos`)
     );
 
     const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
@@ -38,13 +44,18 @@ export const AdminDashboard: React.FC = () => {
         id: doc.id,
         ...doc.data()
       }));
+      console.log('Dashboard: Produtos carregados:', productsData);
+      console.log('Dashboard: Número de produtos:', productsData.length);
       setProducts(productsData);
+      setLoading(false); // Definir loading como false quando produtos são carregados
+    }, (error) => {
+      console.error('Dashboard: Erro ao carregar produtos:', error);
+      setLoading(false);
     });
 
     // Buscar movimentações do usuário
     const movementsQuery = query(
       collection(db, `usuarios/${userId}/movimentacoes`),
-      orderBy('createdAt', 'desc'),
       limit(10)
     );
 
@@ -53,8 +64,12 @@ export const AdminDashboard: React.FC = () => {
         id: doc.id,
         ...doc.data()
       }));
+      console.log('Dashboard: Movimentações carregadas:', movementsData);
       setMovements(movementsData);
-      setLoading(false);
+      // Não definir loading como false aqui, já que foi definido no produtos
+    }, (error) => {
+      console.error('Dashboard: Erro ao carregar movimentações:', error);
+      // Não definir loading como false aqui, já que foi definido no produtos
     });
 
     return () => {
@@ -66,10 +81,19 @@ export const AdminDashboard: React.FC = () => {
   // Calcular métricas
   const totalProducts = products.length;
   const activeProducts = products.filter(p => p.isActive !== false).length;
-  const lowStockProducts = products.filter(p => p.stock <= (p.minStock || 5)).length;
-  const totalValue = products.reduce((acc, p) => acc + (p.stock * (p.price || 0)), 0);
+  const lowStockProducts = products.filter(p => (p.estoqueAtual || 0) <= (p.estoqueMinimo || 5)).length;
+  const totalValue = products.reduce((acc, p) => acc + ((p.estoqueAtual || 0) * (p.preco || 0)), 0);
   // Soma total de itens no estoque (quantidade de unidades)
-  const totalItemsInStock = products.reduce((acc, p) => acc + (p.stock || 0), 0);
+  const totalItemsInStock = products.reduce((acc, p) => acc + (p.estoqueAtual || 0), 0);
+
+  console.log('Dashboard: Métricas calculadas:', {
+    totalProducts,
+    activeProducts,
+    lowStockProducts,
+    totalValue,
+    totalItemsInStock,
+    products: products.map(p => ({ nome: p.nome, estoqueAtual: p.estoqueAtual }))
+  });
 
   // Filtrar movimentações recentes
   const recentMovements = movements.slice(0, 5);
@@ -179,24 +203,24 @@ export const AdminDashboard: React.FC = () => {
             <div className="space-y-3">
               {lowStockProducts > 0 ? (
                 products
-                  .filter(p => p.stock <= (p.minStock || 5))
+                  .filter(p => (p.estoqueAtual || 0) <= (p.estoqueMinimo || 5))
                   .slice(0, 5)
                   .map((product) => (
                     <div key={product.id} className="flex items-center justify-between py-2 border-b last:border-0">
                       <div>
                         <p className="text-sm font-medium text-foreground">
-                          {product.name}
+                          {product.nome}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {product.category || 'Sem categoria'}
+                          {product.categoria || 'Sem categoria'}
                         </p>
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-medium text-orange-600">
-                          {product.stock} unidades
+                          {(product.estoqueAtual || 0)} unidades
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Mín: {product.minStock || 5}
+                          Mín: {(product.estoqueMinimo || 5)}
                         </p>
                       </div>
                     </div>
@@ -227,7 +251,7 @@ export const AdminDashboard: React.FC = () => {
                     <div key={movement.id} className="flex items-center justify-between py-2 border-b last:border-0">
                       <div>
                         <p className="text-sm font-medium text-foreground">
-                          {product?.name || 'Produto não encontrado'}
+                          {product?.nome || 'Produto não encontrado'}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {movement.observacao || movement.tipo}

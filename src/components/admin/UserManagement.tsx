@@ -11,6 +11,7 @@ import { UserPlus, Edit, Trash2, Key, Eye, EyeOff, RefreshCw } from 'lucide-reac
 import { User } from '@/types/auth';
 import { signUp } from '@/lib/firebase';
 import { storeUserRole } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface UserFormData {
   name: string;
@@ -37,6 +38,7 @@ export const UserManagement: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
 
   const [formData, setFormData] = useState<UserFormData>({
     name: '',
@@ -116,7 +118,7 @@ export const UserManagement: React.FC = () => {
   // Carregar usuários na inicialização
   useEffect(() => {
     loadUsersFromStorage();
-  }, []);
+  }, [currentUser]);
 
   const resetForm = () => {
     setFormData({
@@ -135,6 +137,16 @@ export const UserManagement: React.FC = () => {
 
     try {
       if (editingUser) {
+        // Usuários PDV não podem alterar usuários admin
+        if (currentUser?.role === 'pdv' && editingUser.role === 'admin') {
+          toast({
+            title: "Acesso negado",
+            description: "Usuários PDV não podem editar usuários administradores",
+            variant: "destructive"
+          });
+          return;
+        }
+        
         // Lógica para editar usuário
         const updatedUsers = users.map(user => 
           user.id === editingUser.id 
@@ -152,6 +164,16 @@ export const UserManagement: React.FC = () => {
           description: "Dados do usuário foram atualizados com sucesso"
         });
       } else {
+        // Usuários PDV só podem criar usuários PDV
+        if (currentUser?.role === 'pdv' && formData.role === 'admin') {
+          toast({
+            title: "Acesso negado",
+            description: "Usuários PDV não podem criar usuários administradores",
+            variant: "destructive"
+          });
+          return;
+        }
+        
         // Criar novo usuário
         const result = await signUp(formData.email, formData.password);
         
@@ -201,6 +223,16 @@ export const UserManagement: React.FC = () => {
   };
 
   const handleEdit = (user: StoredUser) => {
+    // Usuários PDV não podem editar usuários admin
+    if (currentUser?.role === 'pdv' && user.role === 'admin') {
+      toast({
+        title: "Acesso negado",
+        description: "Usuários PDV não podem editar usuários administradores",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setEditingUser(user);
     setFormData({
       name: user.name,
@@ -221,6 +253,16 @@ export const UserManagement: React.FC = () => {
       toast({
         title: "Não é possível excluir",
         description: "Usuários master não podem ser excluídos",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Usuários PDV não podem excluir usuários admin
+    if (currentUser?.role === 'pdv' && userToDelete.role === 'admin') {
+      toast({
+        title: "Acesso negado",
+        description: "Usuários PDV não podem excluir usuários administradores",
         variant: "destructive"
       });
       return;
@@ -266,6 +308,15 @@ export const UserManagement: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {currentUser?.role === 'pdv' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-800">
+            <strong>Permissões de Usuário PDV:</strong> Você pode visualizar todos os usuários, 
+            criar novos usuários PDV, editar e excluir usuários PDV. Não é possível gerenciar usuários administradores.
+          </p>
+        </div>
+      )}
+      
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-semibold">Usuários do Sistema</h3>
@@ -354,15 +405,23 @@ export const UserManagement: React.FC = () => {
                   <Select
                     value={formData.role}
                     onValueChange={(value: 'admin' | 'pdv') => setFormData(prev => ({ ...prev, role: value }))}
+                    disabled={currentUser?.role === 'pdv'}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione a função" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admin">Dashboard (Administrador)</SelectItem>
+                      <SelectItem value="admin" disabled={currentUser?.role === 'pdv'}>
+                        Dashboard (Administrador)
+                      </SelectItem>
                       <SelectItem value="pdv">PDV (Operador)</SelectItem>
                     </SelectContent>
                   </Select>
+                  {currentUser?.role === 'pdv' && (
+                    <p className="text-xs text-muted-foreground">
+                      Usuários PDV só podem criar outros usuários PDV
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex justify-end space-x-2 pt-4">
@@ -425,6 +484,8 @@ export const UserManagement: React.FC = () => {
                       variant="ghost"
                       size="sm"
                       onClick={() => handleEdit(user)}
+                      disabled={currentUser?.role === 'pdv' && user.role === 'admin'}
+                      title={currentUser?.role === 'pdv' && user.role === 'admin' ? 'Usuários PDV não podem editar administradores' : ''}
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -440,7 +501,8 @@ export const UserManagement: React.FC = () => {
                       size="sm"
                       onClick={() => handleDelete(user.id)}
                       className="text-destructive hover:text-destructive"
-                      disabled={['admin@sistema.com', 'pdv@sistema.com'].includes(user.email)}
+                      disabled={['admin@sistema.com', 'pdv@sistema.com'].includes(user.email) || (currentUser?.role === 'pdv' && user.role === 'admin')}
+                      title={currentUser?.role === 'pdv' && user.role === 'admin' ? 'Usuários PDV não podem excluir administradores' : ''}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

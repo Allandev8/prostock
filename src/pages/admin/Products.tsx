@@ -13,9 +13,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+
+import './Css/styles.css';
+
 import { Textarea } from '@/components/ui/textarea';
 import { adicionarProduto, db, popularCategoriasPadrao } from '@/lib/firebase';
-import { collection, onSnapshot, getDocs, doc, getDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, getDocs, doc, getDoc, deleteDoc, addDoc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -39,7 +42,8 @@ export const AdminProducts: React.FC = () => {
     description: '',
     expiryDate: '',
     dataEntrada: '',
-    notaFiscal: ''
+    notaFiscal: '',
+    dataFabricacao: ''
   });
   const { toast } = useToast();
 
@@ -72,7 +76,8 @@ export const AdminProducts: React.FC = () => {
           description: data.descricao,
           expiryDate: data.dataValidade ? new Date(data.dataValidade) : undefined,
           dataEntrada: data.dataEntrada,
-          notaFiscal: data.notaFiscal || ''
+          notaFiscal: data.notaFiscal || '',
+          dataFabricacao: data.dataFabricacao || ''
         };
       });
       setProducts(produtos);
@@ -98,7 +103,8 @@ export const AdminProducts: React.FC = () => {
       description: '',
       expiryDate: '',
       dataEntrada: '',
-      notaFiscal: ''
+      notaFiscal: '',
+      dataFabricacao: ''
     });
     setEditingProduct(null);
   };
@@ -116,7 +122,8 @@ export const AdminProducts: React.FC = () => {
         description: product.description || '',
         expiryDate: product.expiryDate ? product.expiryDate.toISOString().split('T')[0] : '',
         dataEntrada: product.dataEntrada ? product.dataEntrada.split('T')[0] : '',
-        notaFiscal: product.notaFiscal || ''
+        notaFiscal: product.notaFiscal || '',
+        dataFabricacao: product.dataFabricacao ? product.dataFabricacao.split('T')[0] : ''
       });
     } else {
       resetForm();
@@ -127,6 +134,7 @@ export const AdminProducts: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userId) return;
+    
     const productData = {
       nome: formData.name,
       codigoBarras: formData.barcode,
@@ -138,9 +146,26 @@ export const AdminProducts: React.FC = () => {
       descricao: formData.description || undefined,
       dataValidade: formData.expiryDate ? formData.expiryDate : undefined,
       dataEntrada: formData.dataEntrada ? formData.dataEntrada : new Date().toISOString().split('T')[0],
-      notaFiscal: formData.notaFiscal || undefined
+      notaFiscal: formData.notaFiscal || undefined,
+      dataFabricacao: formData.dataFabricacao ? formData.dataFabricacao : undefined
     };
-    await addDoc(collection(db, `usuarios/${userId}/produtos`), productData);
+
+    if (editingProduct) {
+      // Atualizar produto existente
+      await updateDoc(doc(db, `usuarios/${userId}/produtos`, editingProduct.id), productData);
+      toast({
+        title: "Produto atualizado!",
+        description: `${productData.nome} foi atualizado com sucesso.`
+      });
+    } else {
+      // Criar novo produto
+      await addDoc(collection(db, `usuarios/${userId}/produtos`), productData);
+      toast({
+        title: "Produto adicionado!",
+        description: `${productData.nome} foi adicionado ao catálogo.`
+      });
+    }
+    
     setIsDialogOpen(false);
     resetForm();
   };
@@ -223,52 +248,54 @@ export const AdminProducts: React.FC = () => {
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => openDialog()}>
-                <Plus className="mr-2 h-4 w-4" />
+                <Plus className="mr-2 h-4 w-4"/>
                 Novo Produto
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="box">
               <DialogHeader>
-                <DialogTitle>
+                <DialogTitle >
                   {editingProduct ? 'Editar Produto' : 'Novo Produto'}
                 </DialogTitle>
-                <DialogDescription>
+                <DialogDescription >
                   {editingProduct 
                     ? 'Atualize as informações do produto'
                     : 'Adicione um novo produto ao catálogo'
                   }
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={handleSubmit} className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div className="col-span-2">
-                    <Label htmlFor="name">Nome do Produto</Label>
+                    <Label htmlFor="name" className="text-sm">Nome do Produto</Label>
                     <Input
                       id="name"
                       value={formData.name}
                       onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="Nome do produto"
                       required
+                      className="h-8"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="barcode">Código de Barras</Label>
+                    <Label htmlFor="barcode" className="text-sm">Código de Barras</Label>
                     <Input
                       id="barcode"
                       value={formData.barcode}
                       onChange={(e) => setFormData(prev => ({ ...prev, barcode: e.target.value }))}
                       placeholder="0000000000000"
                       required
+                      className="h-8"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="categoryId">Categoria</Label>
+                    <Label htmlFor="categoryId" className="text-sm">Categoria</Label>
                     <select
                       id="categoryId"
                       value={formData.categoryId}
                       onChange={e => setFormData(prev => ({ ...prev, categoryId: e.target.value }))}
                       required
-                      className="w-full border rounded px-2 py-2"
+                      className="w-full border rounded px-2 py-1 h-8 text-sm"
                     >
                       <option value="">Selecione...</option>
                       {categorias.map(cat => (
@@ -277,7 +304,7 @@ export const AdminProducts: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <Label htmlFor="price">Preço (R$)</Label>
+                    <Label htmlFor="price" className="text-sm">Preço (R$)</Label>
                     <Input
                       id="price"
                       type="number"
@@ -287,10 +314,11 @@ export const AdminProducts: React.FC = () => {
                       onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
                       placeholder="0.00"
                       required
+                      className="h-8"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="stock">Estoque Atual</Label>
+                    <Label htmlFor="stock" className="text-sm">Estoque Atual</Label>
                     <Input
                       id="stock"
                       type="number"
@@ -299,10 +327,11 @@ export const AdminProducts: React.FC = () => {
                       onChange={(e) => setFormData(prev => ({ ...prev, stock: e.target.value }))}
                       placeholder="0"
                       required
+                      className="h-8"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="minStock">Estoque Mínimo</Label>
+                    <Label htmlFor="minStock" className="text-sm">Estoque Mínimo</Label>
                     <Input
                       id="minStock"
                       type="number"
@@ -311,53 +340,70 @@ export const AdminProducts: React.FC = () => {
                       onChange={(e) => setFormData(prev => ({ ...prev, minStock: e.target.value }))}
                       placeholder="0"
                       required
+                      className="h-8"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="expiryDate">Data de Validade</Label>
+                    <Label htmlFor="dataFabricacao" className="text-sm">Data de Fabricação</Label>
+                    <Input
+                      id="dataFabricacao"
+                      type="date"
+                      value={formData.dataFabricacao}
+                      onChange={(e) => setFormData(prev => ({ ...prev, dataFabricacao: e.target.value }))}
+                      className="h-8"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="expiryDate" className="text-sm">Data de Validade</Label>
                     <Input
                       id="expiryDate"
                       type="date"
                       value={formData.expiryDate}
                       onChange={(e) => setFormData(prev => ({ ...prev, expiryDate: e.target.value }))}
+                      className="h-8"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="dataEntrada">Data de Entrada</Label>
+                    <Label htmlFor="dataEntrada" className="text-sm">Data de Entrada</Label>
                     <Input
                       id="dataEntrada"
                       type="date"
                       value={formData.dataEntrada}
                       onChange={(e) => setFormData(prev => ({ ...prev, dataEntrada: e.target.value }))}
+                      className="h-8"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="notaFiscal">Número da Nota Fiscal</Label>
+                    <Label htmlFor="notaFiscal" className="text-sm">Número da Nota Fiscal</Label>
                     <Input
                       id="notaFiscal"
                       value={formData.notaFiscal}
                       onChange={(e) => setFormData(prev => ({ ...prev, notaFiscal: e.target.value }))}
                       placeholder="Número da nota fiscal"
+                      className="h-8"
                     />
                   </div>
                   <div className="col-span-2">
-                    <Label htmlFor="description">Descrição</Label>
+                    <Label htmlFor="description" className="text-sm">Descrição</Label>
                     <Textarea
                       id="description"
                       value={formData.description}
                       onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                       placeholder="Descrição opcional do produto"
+                      rows={1}
+                      className="min-h-[32px]"
                     />
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button type="submit" className="flex-1">
+                <div className="flex gap-2 pt-1">
+                  <Button type="submit" className="flex-1 h-8">
                     {editingProduct ? 'Atualizar' : 'Adicionar'}
                   </Button>
                   <Button 
                     type="button" 
                     variant="outline" 
                     onClick={() => setIsDialogOpen(false)}
+                    className="h-8"
                   >
                     Cancelar
                   </Button>
@@ -425,11 +471,17 @@ export const AdminProducts: React.FC = () => {
                       <span className="font-medium">Min:</span> {product.minStock}
                     </div>
                   </div>
-                  {product.expiryDate && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Validade: {product.expiryDate.toLocaleDateString()}
-                    </p>
-                  )}
+                  <div className="flex gap-4 text-xs text-muted-foreground mt-1">
+                    {product.expiryDate && (
+                      <span>Validade: {product.expiryDate.toLocaleDateString()}</span>
+                    )}
+                    {product.dataFabricacao && (
+                      <span>Fabricação: {new Date(product.dataFabricacao).toLocaleDateString()}</span>
+                    )}
+                    {product.dataEntrada && (
+                      <span>Entrada: {new Date(product.dataEntrada).toLocaleDateString()}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-2 items-center">
                   <Button

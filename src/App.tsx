@@ -44,7 +44,11 @@ const App = () => (
               }>
                 <Route index element={<AdminDashboard />} />
                 <Route path="products" element={<AdminProducts />} />
-                <Route path="settings" element={<Settings />} />
+                <Route path="settings" element={
+                  <ProtectedRoute allowedRoles={['admin', 'pdv']}>
+                    <Settings />
+                  </ProtectedRoute>
+                } />
                 <Route path="inventory" element={<div>Estoque em desenvolvimento</div>} />
                 <Route path="sales" element={<div>Vendas em desenvolvimento</div>} />
                 <Route path="users" element={<div>Usuários em desenvolvimento</div>} />

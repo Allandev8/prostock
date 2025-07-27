@@ -39,6 +39,8 @@ export const signUp = async (email: string, password: string) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     // Salva a role 'admin' para todo novo usuário
     await saveUserRoleToFirestore(userCredential.user.uid, email, 'admin');
+    // Criar contas padrão para o novo usuário
+    await criarContasPadrao(userCredential.user.uid);
     return { success: true, user: userCredential.user };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -185,42 +187,127 @@ export async function registrarSaida(produtoId: string, quantidade: number, usua
 
 // Função para popular categorias padrão no Firestore sem duplicar
 export async function popularCategoriasPadrao(collectionPath = 'categorias') {
-  const categorias = [
-    'Alimentos perecíveis',
-    'Sereais',
-    'Bebidas',
-    'Produtos de limpeza',
-    'Higiene pessoal',
-    'Produtos congelados',
-    'Padaria e confeitaria',
-    'Utilidades domésticas',
-    'Pet shop',
-    'Eletronicos',
-    'Eletrico domestico',
-    'INformatica',
-    'moveis'
+  const categoriasPadrao = [
+    { nome: 'Bebidas', descricao: 'Refrigerantes, sucos, água, etc.' },
+    { nome: 'Alimentos', descricao: 'Produtos alimentícios em geral' },
+    { nome: 'Limpeza', descricao: 'Produtos de limpeza e higiene' },
+    { nome: 'Eletrônicos', descricao: 'Aparelhos eletrônicos' },
+    { nome: 'Vestuário', descricao: 'Roupas e acessórios' },
+    { nome: 'Outros', descricao: 'Outros produtos' }
   ];
-  // Buscar todas as categorias já existentes
-  const snapshot = await getDocs(collection(db, collectionPath));
-  const existentes = new Set(snapshot.docs.map(doc => doc.data().nome));
-  for (const nome of categorias) {
-    if (!existentes.has(nome)) {
-      await addDoc(collection(db, collectionPath), { nome });
+
+  try {
+    const snapshot = await getDocs(collection(db, collectionPath));
+    const categoriasExistentes = snapshot.docs.map(doc => doc.data().nome);
+
+    for (const categoria of categoriasPadrao) {
+      if (!categoriasExistentes.includes(categoria.nome)) {
+        await addDoc(collection(db, collectionPath), categoria);
+      }
     }
+  } catch (error) {
+    console.error('Erro ao popular categorias:', error);
+  }
+}
+
+export async function criarContasPadrao(userId: string) {
+  const contasPadrao = [
+    { 
+      nome: 'Caixa Principal', 
+      tipo: 'caixa' as const, 
+      saldo: 0, 
+      ativo: true,
+      descricao: 'Caixa principal da empresa'
+    },
+    { 
+      nome: 'Conta Bancária', 
+      tipo: 'banco' as const, 
+      saldo: 0, 
+      ativo: true,
+      descricao: 'Conta bancária principal'
+    },
+    { 
+      nome: 'Cartão de Crédito', 
+      tipo: 'cartao' as const, 
+      saldo: 0, 
+      ativo: true,
+      descricao: 'Cartão de crédito empresarial'
+    }
+  ];
+
+  try {
+    const snapshot = await getDocs(collection(db, `usuarios/${userId}/contas`));
+    const contasExistentes = snapshot.docs.map(doc => doc.data().nome);
+
+    for (const conta of contasPadrao) {
+      if (!contasExistentes.includes(conta.nome)) {
+        await addDoc(collection(db, `usuarios/${userId}/contas`), conta);
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao criar contas padrão:', error);
   }
 }
 
 // Função para remover categorias duplicadas do Firestore
 export async function removerCategoriasDuplicadas() {
-  const snapshot = await getDocs(collection(db, "categorias"));
-  const seen = new Set();
-  for (const d of snapshot.docs) {
-    const nome = d.data().nome;
-    if (seen.has(nome)) {
-      await deleteDoc(doc(db, "categorias", d.id));
-    } else {
-      seen.add(nome);
+  try {
+    const snapshot = await getDocs(collection(db, 'categorias'));
+    const categorias = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+    
+    // Agrupar por nome
+    const grupos = categorias.reduce((acc, cat) => {
+      if (!acc[cat.nome]) {
+        acc[cat.nome] = [];
+      }
+      acc[cat.nome].push(cat);
+      return acc;
+    }, {} as Record<string, any[]>);
+    
+    // Remover duplicatas (manter apenas a primeira)
+    for (const [nome, grupo] of Object.entries(grupos)) {
+      if ((grupo as any[]).length > 1) {
+        // Manter o primeiro, remover os outros
+        for (let i = 1; i < (grupo as any[]).length; i++) {
+          await deleteDoc(doc(db, 'categorias', (grupo as any[])[i].id));
+        }
+      }
     }
+  } catch (error) {
+    console.error('Erro ao remover categorias duplicadas:', error);
+  }
+}
+
+export async function resetarSistema(userId: string) {
+  try {
+    // Lista de coleções para limpar
+    const colecoesParaLimpar = [
+      'produtos',
+      'categorias', 
+      'movimentacoes',
+      'vendas',
+      'fluxoCaixa',
+      'contas'
+    ];
+
+    for (const colecao of colecoesParaLimpar) {
+      const snapshot = await getDocs(collection(db, `usuarios/${userId}/${colecao}`));
+      
+      // Deletar todos os documentos da coleção
+      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+    }
+
+    // Recriar contas padrão
+    await criarContasPadrao(userId);
+    
+    // Recriar categorias padrão
+    await popularCategoriasPadrao(`usuarios/${userId}/categorias`);
+
+    return { success: true, message: 'Sistema resetado com sucesso!' };
+  } catch (error) {
+    console.error('Erro ao resetar sistema:', error);
+    return { success: false, error: 'Erro ao resetar sistema' };
   }
 }
 
