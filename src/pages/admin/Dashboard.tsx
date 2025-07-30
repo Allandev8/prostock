@@ -98,6 +98,9 @@ export const AdminDashboard: React.FC = () => {
   // Filtrar movimentações recentes
   const recentMovements = movements.slice(0, 5);
 
+  // Função utilitária para formatar valores em reais
+  const formatBRL = (valor: number) => valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
   const metrics = [
     {
       title: 'Total de Produtos',
@@ -108,7 +111,7 @@ export const AdminDashboard: React.FC = () => {
     },
     {
       title: 'Valor em Estoque',
-      value: `R$ ${totalValue.toFixed(2)}`,
+      value: formatBRL(totalValue),
       subtitle: 'Valor total',
       icon: DollarSign,
       color: 'text-green-600'

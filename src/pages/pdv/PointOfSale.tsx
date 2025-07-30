@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { db, criarContasPadrao } from '@/lib/firebase';
-import { collection, onSnapshot, doc, updateDoc, addDoc, increment, query, orderBy, limit, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, addDoc, increment, query, orderBy, limit, where, getDocs, getDoc } from 'firebase/firestore';
 import { 
   ShoppingCart, 
   Search, 
@@ -26,6 +26,9 @@ import {
   Filter,
   Download
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 interface Product {
   id: string;
@@ -103,6 +106,40 @@ export const PointOfSale: React.FC = () => {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterAccount, setFilterAccount] = useState('');
 
+  // Estados para Abertura de Caixa
+  const [showAberturaModal, setShowAberturaModal] = useState(false);
+  const [aberturaForm, setAberturaForm] = useState({
+    dinheiro: '',
+    cartoes: '',
+    outras: '',
+    data: format(new Date(), 'yyyy-MM-dd'),
+    hora: format(new Date(), 'HH:mm'),
+  });
+  const [caixaAberto, setCaixaAberto] = useState(false);
+  const [isSavingAbertura, setIsSavingAbertura] = useState(false);
+
+  // Estados para Fechamento de Caixa
+  const [showFechamentoModal, setShowFechamentoModal] = useState(false);
+  const [fechamentoForm, setFechamentoForm] = useState({
+    dinheiro: '',
+    cartoes: '',
+    outras: '',
+    data: format(new Date(), 'yyyy-MM-dd'),
+    hora: format(new Date(), 'HH:mm'),
+    observacoes: ''
+  });
+  const [isSavingFechamento, setIsSavingFechamento] = useState(false);
+
+  // Estados para o Log de Movimentações
+  const [showLogModal, setShowLogModal] = useState(false);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  // Estado para modal de pagamento
+  const [showPagamentoModal, setShowPagamentoModal] = useState(false);
+  const [formaPagamento, setFormaPagamento] = useState('Dinheiro');
+  const opcoesPagamento = ['Dinheiro', 'Cartão de Débito', 'Cartão de Crédito', 'Pix', 'Outras'];
+
   // Buscar produtos do usuário em tempo real
   useEffect(() => {
     if (!userId) return;
@@ -162,6 +199,71 @@ export const PointOfSale: React.FC = () => {
 
     return () => unsubscribe();
   }, [userId]);
+
+  // Atualizar o log em tempo real
+  useEffect(() => {
+    if (!userId) return;
+    setLoadingLogs(true);
+    const unsubAberturas = onSnapshot(
+      query(collection(db, `usuarios/${userId}/aberturas_caixa`), orderBy('criadoEm', 'desc')),
+      (snapshot) => {
+        const aberturas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), tipo: 'abertura' }));
+        setLogs((prev) => {
+          const outros = prev.filter(l => l.tipo !== 'abertura');
+          return [...aberturas, ...outros].sort((a, b) => (b.criadoEm || b.dataVenda || '').localeCompare(a.criadoEm || a.dataVenda || ''));
+        });
+        setLoadingLogs(false);
+      }
+    );
+    const unsubFechamentos = onSnapshot(
+      query(collection(db, `usuarios/${userId}/fechamentos_caixa`), orderBy('criadoEm', 'desc')),
+      (snapshot) => {
+        const fechamentos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), tipo: 'fechamento' }));
+        setLogs((prev) => {
+          const outros = prev.filter(l => l.tipo !== 'fechamento');
+          return [...fechamentos, ...outros].sort((a, b) => (b.criadoEm || b.dataVenda || '').localeCompare(a.criadoEm || a.dataVenda || ''));
+        });
+        setLoadingLogs(false);
+      }
+    );
+    const unsubVendas = onSnapshot(
+      query(collection(db, `usuarios/${userId}/vendas`), orderBy('dataVenda', 'desc')),
+      (snapshot) => {
+        const vendas = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), tipo: 'venda' }));
+        setLogs((prev) => {
+          const outros = prev.filter(l => l.tipo !== 'venda');
+          return [...vendas, ...outros].sort((a, b) => (b.criadoEm || b.dataVenda || '').localeCompare(a.criadoEm || a.dataVenda || ''));
+        });
+        setLoadingLogs(false);
+      }
+    );
+    return () => {
+      unsubAberturas();
+      unsubFechamentos();
+      unsubVendas();
+    };
+  }, [userId]);
+
+  // Função para buscar logs de aberturas, fechamentos e vendas
+  const fetchLogs = async () => {
+    if (!userId) return;
+    setLoadingLogs(true);
+    // Buscar aberturas
+    const aberturasSnap = await getDocs(query(collection(db, `usuarios/${userId}/aberturas_caixa`), orderBy('criadoEm', 'desc')));
+    const aberturas = aberturasSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), tipo: 'abertura' }));
+    // Buscar fechamentos
+    const fechamentosSnap = await getDocs(query(collection(db, `usuarios/${userId}/fechamentos_caixa`), orderBy('criadoEm', 'desc')));
+    const fechamentos = fechamentosSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), tipo: 'fechamento' }));
+    // Buscar vendas
+    const vendasSnap = await getDocs(query(collection(db, `usuarios/${userId}/vendas`), orderBy('dataVenda', 'desc')));
+    const vendas = vendasSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), tipo: 'venda' }));
+    setLogs([
+      ...aberturas,
+      ...fechamentos,
+      ...vendas
+    ].sort((a, b) => (b.criadoEm || b.dataVenda || '').localeCompare(a.criadoEm || a.dataVenda || '')));
+    setLoadingLogs(false);
+  };
 
   const filteredProducts = products.filter(product =>
     (product.isActive !== false) && (
@@ -234,6 +336,9 @@ export const PointOfSale: React.FC = () => {
     .reduce((total, entry) => total + entry.valor, 0);
 
   const saldoAtual = totalEntradas - totalSaidas;
+
+  // Função utilitária para formatar valores em reais
+  const formatBRL = (valor: number) => valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   // Categorias disponíveis
   const categorias = [
@@ -358,26 +463,149 @@ export const PointOfSale: React.FC = () => {
     }
   };
 
-  const processSaleTransaction = async () => {
-    if (cart.length === 0 || !userId) return;
+  // Ajustar processSaleTransaction para abrir modal de pagamento
+  const handleFinalizarVenda = () => {
+    setShowPagamentoModal(true);
+  };
 
+  // Carregar dados da empresa
+  const [empresaData, setEmpresaData] = useState<any>(null);
+  const [cupomNumber, setCupomNumber] = useState(1);
+
+  // Carregar dados da empresa
+  useEffect(() => {
+    if (!userId) return;
+    const loadEmpresaData = async () => {
+      try {
+        const docSnap = await getDoc(doc(db, `usuarios/${userId}/empresa`, 'configuracoes'));
+        if (docSnap.exists()) {
+          setEmpresaData(docSnap.data());
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados da empresa:', error);
+      }
+    };
+    loadEmpresaData();
+  }, [userId]);
+
+  // Função para gerar número do cupom
+  const gerarNumeroCupom = () => {
+    const numero = cupomNumber;
+    setCupomNumber(prev => prev + 1);
+    return numero.toString().padStart(6, '0');
+  };
+
+  // Função para imprimir cupom fiscal
+  const imprimirCupomFiscal = (vendaData: any) => {
+    const numeroCupom = gerarNumeroCupom();
+    const dataHora = new Date();
+    const dataFormatada = dataHora.toLocaleDateString('pt-BR');
+    const horaFormatada = dataHora.toLocaleTimeString('pt-BR');
+
+    // Criar conteúdo do cupom
+    const cupomContent = `
+╔══════════════════════════════════════════════════════════════╗
+║                        CUPOM FISCAL                          ║
+╠══════════════════════════════════════════════════════════════╣
+║ ${empresaData?.companyName || 'NOME FANTASIA LTDA'}          ║
+║ ${empresaData?.razaoSocial || 'RAZÃO SOCIAL'}                ║
+║ CNPJ/CPF: ${empresaData?.cnpjCpf || '00.000.000/0000-00'}    ║
+║ ${empresaData?.address || 'ENDEREÇO'}                        ║
+║ Tel: ${empresaData?.phone || '(00) 0000-0000'}               ║
+╠══════════════════════════════════════════════════════════════╣
+║ Cupom: ${numeroCupom}    Data: ${dataFormatada} ${horaFormatada} ║
+╠══════════════════════════════════════════════════════════════╣
+║ ITEM  CÓD.  DESCRIÇÃO                    QTD   VL.UN   TOTAL ║
+╠══════════════════════════════════════════════════════════════╣
+${vendaData.items.map((item: any, index: number) => {
+  const itemNumber = (index + 1).toString().padStart(3, '0');
+  const codigo = item.produtoId.substring(0, 6);
+  const descricao = item.produtoNome.substring(0, 25).padEnd(25);
+  const qtd = item.quantidade.toString().padStart(3, ' ');
+  const vlUn = formatBRL(item.precoUnitario).padStart(8, ' ');
+  const total = formatBRL(item.precoTotal).padStart(10, ' ');
+  return `║ ${itemNumber}  ${codigo}  ${descricao} ${qtd}  ${vlUn}  ${total} ║`;
+}).join('\n')}
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║ FORMA DE PAGAMENTO: ${vendaData.formaPagamento}              ║
+║                                                              ║
+║ TOTAL DA COMPRA: ${formatBRL(vendaData.total)}               ║
+║                                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║                    OBRIGADO PELA PREFERÊNCIA!                ║
+║                                                              ║
+║ ${empresaData?.email || 'contato@empresa.com'}               ║
+╚══════════════════════════════════════════════════════════════╝
+    `;
+
+    // Abrir nova janela para impressão
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Cupom Fiscal - ${numeroCupom}</title>
+            <style>
+              body {
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+                line-height: 1.2;
+                margin: 0;
+                padding: 10px;
+                white-space: pre;
+              }
+              @media print {
+                body { margin: 0; }
+              }
+            </style>
+          </head>
+          <body>
+            ${cupomContent}
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+      printWindow.close();
+    }
+
+    // Salvar dados do cupom no Firestore
+    const salvarCupomFiscal = async () => {
+      try {
+        await addDoc(collection(db, `usuarios/${userId}/cupons`), {
+          numeroCupom,
+          dataHora: dataHora.toISOString(),
+          vendaData,
+          empresaData,
+          usuario: user.email
+        });
+      } catch (error) {
+        console.error('Erro ao salvar cupom:', error);
+      }
+    };
+    salvarCupomFiscal();
+  };
+
+  // Nova função para processar venda após seleção da forma de pagamento
+  const confirmarVendaComPagamento = async () => {
+    if (cart.length === 0 || !userId) return;
     setIsProcessing(true);
-    
+    setShowPagamentoModal(false);
     try {
-      // Verificar se todos os produtos ainda têm estoque suficiente
+      // Verificar estoque
       for (const item of cart) {
         const product = products.find(p => p.id === item.productId);
         if (!product || product.estoqueAtual < item.quantity) {
           toast({
-            title: "Estoque insuficiente",
+            title: 'Estoque insuficiente',
             description: `${product?.nome || 'Produto'} não tem estoque suficiente.`,
-            variant: "destructive"
+            variant: 'destructive'
           });
           setIsProcessing(false);
           return;
         }
       }
-
       // Registrar a venda
       const saleData = {
         items: cart.map(item => ({
@@ -390,11 +618,14 @@ export const PointOfSale: React.FC = () => {
         total: cartTotal,
         usuarioId: userId,
         dataVenda: new Date().toISOString(),
-        status: 'finalizada'
+        status: 'finalizada',
+        formaPagamento
       };
-
       await addDoc(collection(db, `usuarios/${userId}/vendas`), saleData);
-
+      
+      // Imprimir cupom fiscal
+      imprimirCupomFiscal(saleData);
+      
       // Registrar entrada no fluxo de caixa
       await addDoc(collection(db, `usuarios/${userId}/fluxoCaixa`), {
         tipo: 'entrada',
@@ -404,17 +635,15 @@ export const PointOfSale: React.FC = () => {
         conta: 'Caixa Principal',
         data: new Date().toISOString(),
         status: 'pago',
-        usuario: user.email
+        usuario: user.email,
+        formaPagamento
       });
-
-      // Atualizar estoque de cada produto
+      // Atualizar estoque
       for (const item of cart) {
         const productRef = doc(db, `usuarios/${userId}/produtos`, item.productId);
         await updateDoc(productRef, {
           estoqueAtual: increment(-item.quantity)
         });
-
-        // Registrar movimentação
         await addDoc(collection(db, `usuarios/${userId}/movimentacoes`), {
           produtoId: item.productId,
           tipo: 'saida',
@@ -424,25 +653,21 @@ export const PointOfSale: React.FC = () => {
           createdAt: new Date().toISOString()
         });
       }
-
       toast({
-        title: "Venda finalizada!",
-        description: `Venda de R$ ${cartTotal.toFixed(2)} processada com sucesso.`
+        title: 'Venda finalizada!',
+        description: `Venda de ${formatBRL(cartTotal)} processada com sucesso. Cupom fiscal impresso.`
       });
-
       setCart([]);
       setSearchTerm('');
       searchInputRef.current?.focus();
-      
     } catch (error) {
       console.error('Erro ao processar venda:', error);
       toast({
-        title: "Erro ao processar venda",
-        description: "Ocorreu um erro ao finalizar a venda. Tente novamente.",
-        variant: "destructive"
+        title: 'Erro ao processar venda',
+        description: 'Ocorreu um erro ao finalizar a venda. Tente novamente.',
+        variant: 'destructive'
       });
     }
-    
     setIsProcessing(false);
   };
 
@@ -518,6 +743,123 @@ export const PointOfSale: React.FC = () => {
     });
   };
 
+  // Função para salvar abertura de caixa no Firestore
+  const handleAberturaCaixa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) return;
+    setIsSavingAbertura(true);
+    try {
+      await addDoc(collection(db, `usuarios/${userId}/aberturas_caixa`), {
+        operadorNome: user?.name,
+        operadorId: userId,
+        pdv: 'PDV Principal', // Ajuste conforme necessário
+        dinheiro: parseFloat(aberturaForm.dinheiro || '0'),
+        cartoes: parseFloat(aberturaForm.cartoes || '0'),
+        outras: parseFloat(aberturaForm.outras || '0'),
+        data: aberturaForm.data,
+        hora: aberturaForm.hora,
+        criadoEm: new Date().toISOString(),
+      });
+      setCaixaAberto(true);
+      setShowAberturaModal(false);
+      toast({
+        title: 'Abertura de caixa registrada!',
+        description: 'O caixa foi aberto com sucesso.'
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro ao abrir caixa',
+        description: 'Não foi possível registrar a abertura. Tente novamente.',
+        variant: 'destructive'
+      });
+    }
+    setIsSavingAbertura(false);
+  };
+
+  // Função para salvar fechamento de caixa no Firestore
+  const handleFechamentoCaixa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) return;
+    setIsSavingFechamento(true);
+    try {
+      await addDoc(collection(db, `usuarios/${userId}/fechamentos_caixa`), {
+        operadorNome: user?.name,
+        operadorId: userId,
+        pdv: 'PDV Principal', // Ajuste conforme necessário
+        dinheiro: parseFloat(fechamentoForm.dinheiro || '0'),
+        cartoes: parseFloat(fechamentoForm.cartoes || '0'),
+        outras: parseFloat(fechamentoForm.outras || '0'),
+        data: fechamentoForm.data,
+        hora: fechamentoForm.hora,
+        observacoes: fechamentoForm.observacoes,
+        criadoEm: new Date().toISOString(),
+      });
+      setCaixaAberto(false);
+      setShowFechamentoModal(false);
+      toast({
+        title: 'Fechamento de caixa registrado!',
+        description: 'O caixa foi fechado com sucesso.'
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro ao fechar caixa',
+        description: 'Não foi possível registrar o fechamento. Tente novamente.',
+        variant: 'destructive'
+      });
+    }
+    setIsSavingFechamento(false);
+  };
+
+  // Bloquear vendas se caixa não estiver aberto
+  const podeVender = caixaAberto;
+
+  // Função para exportar o log para Excel (cada item de venda em uma linha)
+  const exportLogToExcel = () => {
+    const data: any[] = [];
+    logs.forEach((log) => {
+      if (log.tipo === 'abertura' || log.tipo === 'fechamento') {
+        data.push({
+          Tipo: log.tipo === 'abertura' ? 'Abertura' : 'Fechamento',
+          Data: `${log.data} ${log.hora}`,
+          Operador: log.operadorNome,
+          PDV: log.pdv,
+          Dinheiro: log.dinheiro,
+          Cartoes: log.cartoes,
+          Outras: log.outras,
+          Observacoes: log.observacoes || '',
+          Produto: '',
+          Quantidade: '',
+          ValorUnitario: '',
+          ValorTotalItem: '',
+          ValorTotalVenda: '',
+        });
+      } else if (log.tipo === 'venda') {
+        (log.items || []).forEach((item: any) => {
+          data.push({
+            Tipo: 'Venda',
+            Data: new Date(log.dataVenda).toLocaleString('pt-BR'),
+            Operador: '',
+            PDV: '',
+            Dinheiro: '',
+            Cartoes: '',
+            Outras: '',
+            Observacoes: '',
+            Produto: item.produtoNome,
+            Quantidade: item.quantidade,
+            ValorUnitario: item.precoUnitario,
+            ValorTotalItem: item.precoTotal,
+            ValorTotalVenda: log.total,
+            FormaPagamento: log.formaPagamento || 'Dinheiro'
+          });
+        });
+      }
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'MovimentacoesCaixa');
+    XLSX.writeFile(wb, 'movimentacoes_caixa.xlsx');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-muted/30 p-4 flex items-center justify-center">
@@ -555,6 +897,166 @@ export const PointOfSale: React.FC = () => {
           </TabsList>
 
           <TabsContent value="pdv" className="space-y-6">
+            {/* Botões de Abertura e Fechamento de Caixa */}
+            <div className="flex gap-4 mb-4">
+              <Button variant="default" onClick={() => setShowAberturaModal(true)} disabled={caixaAberto}>Abertura de Caixa</Button>
+              <Button variant="secondary" onClick={() => setShowFechamentoModal(true)} disabled={!caixaAberto}>Fechamento de Caixa</Button>
+              <Button variant="outline" onClick={() => { setShowLogModal(true); }}>Visualizar Log de Movimentações</Button>
+            </div>
+            {/* Modal de Abertura de Caixa */}
+            <Dialog open={showAberturaModal} onOpenChange={setShowAberturaModal}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Iniciar Abertura de Caixa</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleAberturaCaixa} className="space-y-4">
+                  <div>
+                    <strong>Operador:</strong> {user?.name} <br />
+                    <strong>ID:</strong> {userId} <br />
+                    <strong>PDV:</strong> PDV Principal
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label>Dinheiro Vivo (R$)</label>
+                      <Input type="number" step="0.01" min="0" value={aberturaForm.dinheiro} onChange={e => setAberturaForm(f => ({ ...f, dinheiro: e.target.value }))} required />
+                    </div>
+                    <div>
+                      <label>Cartões (R$)</label>
+                      <Input type="number" step="0.01" min="0" value={aberturaForm.cartoes} onChange={e => setAberturaForm(f => ({ ...f, cartoes: e.target.value }))} required />
+                    </div>
+                    <div>
+                      <label>Outras formas (R$)</label>
+                      <Input type="number" step="0.01" min="0" value={aberturaForm.outras} onChange={e => setAberturaForm(f => ({ ...f, outras: e.target.value }))} required />
+                    </div>
+                    <div>
+                      <label>Data</label>
+                      <Input type="date" value={aberturaForm.data} onChange={e => setAberturaForm(f => ({ ...f, data: e.target.value }))} required />
+                    </div>
+                    <div>
+                      <label>Hora</label>
+                      <Input type="time" value={aberturaForm.hora} onChange={e => setAberturaForm(f => ({ ...f, hora: e.target.value }))} required />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit" disabled={isSavingAbertura}>{isSavingAbertura ? 'Salvando...' : 'Confirmar Abertura de Caixa'}</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+            {/* Modal de Fechamento de Caixa */}
+            <Dialog open={showFechamentoModal} onOpenChange={setShowFechamentoModal}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Fechamento de Caixa</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleFechamentoCaixa} className="space-y-4">
+                  <div>
+                    <strong>Operador:</strong> {user?.name} <br />
+                    <strong>ID:</strong> {userId} <br />
+                    <strong>PDV:</strong> PDV Principal
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label>Dinheiro Vivo (R$)</label>
+                      <Input type="number" step="0.01" min="0" value={fechamentoForm.dinheiro} onChange={e => setFechamentoForm(f => ({ ...f, dinheiro: e.target.value }))} required />
+                    </div>
+                    <div>
+                      <label>Cartões (R$)</label>
+                      <Input type="number" step="0.01" min="0" value={fechamentoForm.cartoes} onChange={e => setFechamentoForm(f => ({ ...f, cartoes: e.target.value }))} required />
+                    </div>
+                    <div>
+                      <label>Outras formas (R$)</label>
+                      <Input type="number" step="0.01" min="0" value={fechamentoForm.outras} onChange={e => setFechamentoForm(f => ({ ...f, outras: e.target.value }))} required />
+                    </div>
+                    <div>
+                      <label>Data</label>
+                      <Input type="date" value={fechamentoForm.data} onChange={e => setFechamentoForm(f => ({ ...f, data: e.target.value }))} required />
+                    </div>
+                    <div>
+                      <label>Hora</label>
+                      <Input type="time" value={fechamentoForm.hora} onChange={e => setFechamentoForm(f => ({ ...f, hora: e.target.value }))} required />
+                    </div>
+                  </div>
+                  <div>
+                    <label>Observações</label>
+                    <Input value={fechamentoForm.observacoes} onChange={e => setFechamentoForm(f => ({ ...f, observacoes: e.target.value }))} placeholder="Observações adicionais (opcional)" />
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit" disabled={isSavingFechamento}>{isSavingFechamento ? 'Salvando...' : 'Confirmar Fechamento de Caixa'}</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+            {/* Modal de Log de Movimentações */}
+            <Dialog open={showLogModal} onOpenChange={setShowLogModal}>
+              <DialogContent className="max-w-3xl">
+                <DialogHeader>
+                  <DialogTitle>Histórico de Movimentações do Caixa</DialogTitle>
+                  <Button variant="outline" size="sm" onClick={exportLogToExcel} className="ml-2">Baixar Excel</Button>
+                </DialogHeader>
+                {loadingLogs ? (
+                  <div className="text-center py-8">Carregando...</div>
+                ) : (
+                  <div className="max-h-[60vh] overflow-y-auto space-y-4">
+                    {logs.length === 0 && <div className="text-center py-8">Nenhuma movimentação encontrada</div>}
+                    {logs.map((log, idx) => (
+                      <div key={log.id + idx} className="border rounded-lg p-3">
+                        {log.tipo === 'abertura' && (
+                          <div>
+                            <strong>🔓 Abertura de Caixa</strong><br />
+                            Operador: {log.operadorNome} | ID: {log.operadorId} | PDV: {log.pdv}<br />
+                            Data: {log.data} {log.hora}<br />
+                            Dinheiro: {formatBRL(log.dinheiro || 0)} | Cartões: {formatBRL(log.cartoes || 0)} | Outras: {formatBRL(log.outras || 0)}
+                          </div>
+                        )}
+                        {log.tipo === 'fechamento' && (
+                          <div>
+                            <strong>🔒 Fechamento de Caixa</strong><br />
+                            Operador: {log.operadorNome} | ID: {log.operadorId} | PDV: {log.pdv}<br />
+                            Data: {log.data} {log.hora}<br />
+                            Dinheiro: {formatBRL(log.dinheiro || 0)} | Cartões: {formatBRL(log.cartoes || 0)} | Outras: {formatBRL(log.outras || 0)}<br />
+                            Observações: {log.observacoes || '-'}
+                          </div>
+                        )}
+                        {log.tipo === 'venda' && (
+                          <div>
+                            <strong>🛒 Venda</strong><br />
+                            Data/Hora: {new Date(log.dataVenda).toLocaleString()}<br />
+                            Valor Total: <strong>{formatBRL(log.total || 0)}</strong><br />
+                            Forma de Pagamento: {log.formaPagamento || 'Dinheiro'}<br />
+                            Itens:<br />
+                            <ul className="ml-4 list-disc">
+                              {log.items?.map((item: any, i: number) => (
+                                <li key={i}>{item.produtoNome} - Qtd: {item.quantidade} - {formatBRL(item.precoTotal || 0)}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
+            {/* Modal de Pagamento */}
+            <Dialog open={showPagamentoModal} onOpenChange={setShowPagamentoModal}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Selecione a Forma de Pagamento</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  {opcoesPagamento.map(opcao => (
+                    <label key={opcao} className="flex items-center gap-2">
+                      <input type="radio" name="formaPagamento" value={opcao} checked={formaPagamento === opcao} onChange={() => setFormaPagamento(opcao)} />
+                      {opcao}
+                    </label>
+                  ))}
+                </div>
+                <DialogFooter>
+                  <Button onClick={confirmarVendaComPagamento} disabled={isProcessing}>Confirmar</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <div className="grid gap-6 lg:grid-cols-2">
               {/* Product Search */}
               <Card>
@@ -589,11 +1091,12 @@ export const PointOfSale: React.FC = () => {
                           <h3 className="font-medium text-foreground">{product.nome}</h3>
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-sm text-muted-foreground">
-                              R$ {product.preco.toFixed(2)}
+                              {formatBRL(product.preco)}
                             </span>
                             <Badge variant={product.estoqueAtual > product.estoqueMinimo ? 'outline' : 'destructive'}>
                               {product.estoqueAtual} em estoque
                             </Badge>
+                            <div className="text-xs text-muted-foreground">Valor em estoque: {formatBRL(product.preco * product.estoqueAtual)}</div>
                           </div>
                         </div>
                         <Button
@@ -650,7 +1153,7 @@ export const PointOfSale: React.FC = () => {
                             <div className="flex-1">
                               <h4 className="font-medium text-foreground">{item.productName}</h4>
                               <p className="text-sm text-muted-foreground">
-                                R$ {item.unitPrice.toFixed(2)} cada
+                                {formatBRL(item.unitPrice)} cada
                               </p>
                             </div>
                             
@@ -660,6 +1163,7 @@ export const PointOfSale: React.FC = () => {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}
+                                  disabled={!podeVender}
                                 >
                                   <Minus className="h-3 w-3" />
                                 </Button>
@@ -670,7 +1174,7 @@ export const PointOfSale: React.FC = () => {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}
-                                  disabled={item.quantity >= (products.find(p => p.id === item.productId)?.estoqueAtual || 0)}
+                                  disabled={item.quantity >= (products.find(p => p.id === item.productId)?.estoqueAtual || 0) || !podeVender}
                                 >
                                   <Plus className="h-3 w-3" />
                                 </Button>
@@ -678,7 +1182,7 @@ export const PointOfSale: React.FC = () => {
                               
                               <div className="text-right min-w-20">
                                 <p className="font-medium text-foreground">
-                                  R$ {item.totalPrice.toFixed(2)}
+                                  {formatBRL(item.totalPrice)}
                                 </p>
                               </div>
                               
@@ -686,6 +1190,7 @@ export const PointOfSale: React.FC = () => {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => removeFromCart(item.productId)}
+                                disabled={!podeVender}
                               >
                                 <Trash2 className="h-3 w-3" />
                               </Button>
@@ -698,19 +1203,24 @@ export const PointOfSale: React.FC = () => {
                         <div className="flex items-center justify-between mb-4">
                           <span className="text-lg font-medium text-foreground">Total:</span>
                           <span className="text-2xl font-bold text-primary">
-                            R$ {cartTotal.toFixed(2)}
+                            {formatBRL(cartTotal)}
                           </span>
                         </div>
                         
                         <Button
-                          onClick={processSaleTransaction}
-                          disabled={isProcessing || cart.length === 0}
+                          onClick={handleFinalizarVenda}
+                          disabled={isProcessing || cart.length === 0 || !podeVender}
                           className="w-full"
                           size="lg"
                         >
                           <CreditCard className="mr-2 h-4 w-4" />
                           {isProcessing ? 'Processando...' : 'Finalizar Venda'}
                         </Button>
+                        {!podeVender && (
+                          <div className="mt-2 text-sm text-red-600 text-center">
+                            As vendas estão bloqueadas até que a abertura de caixa seja concluída.
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -729,7 +1239,7 @@ export const PointOfSale: React.FC = () => {
                 </CardHeader>
                 <CardContent className="px-0 pb-0">
                   <div className={`text-lg font-bold ${saldoAtual >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    R$ {saldoAtual.toFixed(2)}
+                    {formatBRL(saldoAtual)}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {selectedPeriod === 'hoje' ? 'Hoje' : 
@@ -746,7 +1256,7 @@ export const PointOfSale: React.FC = () => {
                 </CardHeader>
                 <CardContent className="px-0 pb-0">
                   <div className="text-lg font-bold text-green-600">
-                    R$ {totalEntradas.toFixed(2)}
+                    {formatBRL(totalEntradas)}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {filteredEntries.filter(e => e.tipo === 'entrada').length} lançamentos
@@ -761,7 +1271,7 @@ export const PointOfSale: React.FC = () => {
                 </CardHeader>
                 <CardContent className="px-0 pb-0">
                   <div className="text-lg font-bold text-red-600">
-                    R$ {totalSaidas.toFixed(2)}
+                    {formatBRL(totalSaidas)}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {filteredEntries.filter(e => e.tipo === 'saida').length} lançamentos
@@ -1069,7 +1579,7 @@ export const PointOfSale: React.FC = () => {
                       </div>
                       <div className={`text-right ${entry.tipo === 'entrada' ? 'text-green-600' : 'text-red-600'}`}>
                         <p className="font-medium">
-                          {entry.tipo === 'entrada' ? '+' : '-'} R$ {entry.valor.toFixed(2)}
+                          {entry.tipo === 'entrada' ? '+' : '-'} {formatBRL(entry.valor)}
                         </p>
                       </div>
                     </div>
