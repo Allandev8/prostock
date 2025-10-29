@@ -1,8 +1,8 @@
-# Welcome to your Lovable project
+# Welcome to your  project
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/a2bd7eda-7952-4af9-a5c2-32916341235f
+
 
 ## How can I edit this code?
 
@@ -10,7 +10,8 @@ There are several ways of editing your application.
 
 **Use Lovable**
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/a2bd7eda-7952-4af9-a5c2-32916341235f) and start prompting.
+[Simply visit the [Lovable Project](https://lovable.dev/projects/a2bd7eda-7952-4af9-a5c2-32916341235f) and start prompting.](https://pro-stock-ten.vercel.app - produção
+)
 
 Changes made via Lovable will be committed automatically to this repo.
 
